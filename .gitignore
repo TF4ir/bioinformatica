@@ -1,0 +1,10 @@
+.env
+clinvar.vcf
+clinvar.vcf.gz
+revel.zip
+revel_data/
+miniconda.sh
+whole_genome_SNVs.tsv.gz.tbi
+cadd_brca1.tsv
+*.ipynb_checkpoints
+__pycache__/
