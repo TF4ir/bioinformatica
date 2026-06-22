@@ -5,62 +5,50 @@ Este archivo sirve como memoria técnica para que cualquier desarrollador o agen
 ---
 
 ## 📌 Datos de la Sesión Actual
-* **ID de Conversación de Referencia (Antigravity):** `412462d0-60d1-4b01-8ad0-45e63540b094`
-* **Última Actualización:** 2026-06-19
+* **ID de Conversación de Referencia (Antigravity):** `0e256ae4-dcba-4288-b360-db897e6226d9`
+* **Última Actualización:** 2026-06-22
 
 ---
 
-## 🚀 Arquitectura de la Solución (Híbrida)
-Para solucionar el problema de portabilidad y espacio (los archivos originales de REVEL pesan ~7 GB y CADD ~100-500 MB, imposibles de subir a GitHub o Supabase completos), se rediseñó la app:
-1. **Filtro por BRCA1:** Dado que la app solo analiza la región de BRCA1 en el cromosoma 17, las bases de datos de CADD y REVEL se filtran localmente para quedarse solo con esa región (~5-20 MB en total).
-2. **Tablas en Supabase:** Se crearon estructuras para almacenar los scores de BRCA1 en la nube.
-3. **Consulta Dinámica:** La aplicación `app.py` busca primero los archivos de referencia locales. Si no existen, consulta automáticamente a Supabase vía API. Esto permite que los laboratorios (clientes) usen la plataforma subiendo solo su VCF sin descargar gigabytes de datos de referencia.
+## 🚀 Arquitectura de la Solución (Híbrida y Dinámica)
+Para solucionar el problema de portabilidad y tamaño de las bases de datos (REVEL ~7 GB y CADD ~80GB), la aplicación se rediseñó para operar en la nube:
+1. **Bases de Datos Locales a Supabase:** Los archivos de CADD y REVEL fueron filtrados exclusivamente para la región BRCA1 del cromosoma 17 y migrados exitosamente a tablas en Supabase.
+2. **Consulta Híbrida CADD/REVEL:** La aplicación (`app.py`) busca primero los archivos locales. Si está desplegada en la nube y no existen los archivos pesados, consulta directamente a Supabase a través de la API para obtener los valores `cadd_phred` y `REVEL`.
+3. **Frecuencia Alélica (AF) en Tiempo Real:** En lugar de alojar gigabytes de datos poblacionales, la aplicación consulta de forma dinámica y en tiempo real la API pública de **gnomAD** por cada variante para obtener el valor `af` (frecuencia en exomas o genomas).
 
 ---
 
 ## 🛠️ Estado del Proyecto
 
-### ✅ Lo que ya está Hecho y Configurado:
-1. **Entorno Virtual (`.venv`):** Configurado con Python 3.14 y dependencias instaladas (`streamlit`, `pandas`, `supabase`, `scikit-learn`, etc.).
-2. **Código de la App (`app.py`):** Completamente reescrito. Detecta si la conexión a Supabase está activa y si hay archivos locales. Si no hay archivos locales, hace consultas seguras por API a Supabase.
-3. **Esquema de Base de Datos (`supabase_schema.sql`):** Script SQL listo para crear las tablas `historial_analisis`, `cadd_brca1` y `revel_brca1` con sus respectivos índices para búsquedas veloces.
-4. **Script de Carga (`setup_database.py`):** Script listo para procesar los archivos locales filtrando BRCA1 y subiendo los datos en lotes de 500 filas a Supabase.
-5. **Descarga de REVEL:** Completada con éxito. El archivo `revel_data/revel_with_transcript_ids` (~6.05 GB) y `revel.zip` (~667 MB) están en el disco local de Windows (`C:\Users\Usuario\Desktop\Git\bioinformatica`).
-
-### ⚠️ Lo que quedó Pendiente (Bloqueado por Servidor Externo):
-* **Descarga de CADD:** El servidor oficial de CADD de la Universidad de Washington (`krishna.gs.washington.edu`) experimentó caídas y arrojó *Connection timed out* al intentar hacer las peticiones `tabix`. Falta el archivo `cadd_brca1.tsv` en la raíz del proyecto.
+### ✅ Lo que ya está Hecho y Completado:
+1. **Obtención de CADD y REVEL:** Aunque el servidor oficial de CADD fallaba por *Connection timed out* en WSL, el archivo `cadd_brca1.tsv` fue incorporado manualmente al directorio. REVEL se descargó y procesó con éxito.
+2. **Configuración de Supabase:** Se crearon las tablas e índices mediante `supabase_schema.sql` y se habilitó *Row Level Security (RLS)*.
+3. **Población de la Base de Datos:** Se actualizó `setup_database.py` para manejar conflictos de inserción (`on_conflict`) y eliminar transcritos duplicados de REVEL. **Se logró cargar el 100% de las variantes de BRCA1** (243,210 de CADD y 13,703 únicas de REVEL) hacia Supabase usando la clave `service_role`.
+4. **Repositorio en GitHub:** El código fue integrado en la rama `main` del repositorio `TF4ir/bioinformatica`. El archivo `.gitignore` fue configurado para proteger los secretos e ignorar los datos locales pesados.
+5. **Despliegue en Streamlit Cloud:** La aplicación está funcional en la web. Está configurada con los *Secrets* (credenciales de Supabase en formato TOML) para conectarse a la base de datos remotamente.
 
 ---
 
-## 📋 Pasos a Seguir para Completar el Setup
+## 📋 Pasos Futuros o Tareas Pendientes
 
-Cuando retomes el proyecto, debes seguir estos pasos en orden:
+El pipeline ya funciona de extremo a extremo, pero si necesitas hacer mantenimiento en el futuro:
 
-### Paso 1: Obtener el archivo de CADD
-Dado que el servidor web de CADD está caído, pídele a tu compañera el archivo **`cadd_brca1.tsv`** (pesa solo ~15 MB ya filtrado por ella) y colócalo en la raíz de tu proyecto `C:\Users\Usuario\Desktop\Git\bioinformatica\`.
+### 1. Limpieza de Entorno Local
+Dado que los datos ya están en Supabase de forma segura, puedes eliminar de forma permanente los archivos pesados locales para liberar ~6.7 GB de disco:
+* Archivo `revel.zip`
+* Carpeta `revel_data/`
+* Archivo `cadd_brca1.tsv`
+*(Al eliminarlos, la app local automáticamente empezará a probar la conexión contra Supabase, tal como lo hace la versión en producción).*
 
-### Paso 2: Configurar Supabase
-1. Entra a tu consola de [Supabase](https://supabase.com/).
-2. Ve al **SQL Editor** de tu proyecto y ejecuta todo el código de [supabase_schema.sql](file:///C:/Users/Usuario/Desktop/Git/bioinformatica/supabase_schema.sql) para crear las tablas e índices.
-3. Copia el archivo `.env.example` y nómbralo como `.env`.
-4. Rellena las variables `SUPABASE_URL` y `SUPABASE_KEY` con las credenciales de tu proyecto (las encuentras en *Project Settings* -> *API*).
+### 2. Modificaciones al código
+Si modificas la lógica en `app.py` o el modelo `brca1_dataset_final.csv`:
+1. Haz un `git add .` y `git commit -m "Cambios"`
+2. Sube los cambios con `git push origin main`
+3. Streamlit Cloud detectará el push y reiniciará la app web automáticamente en un par de minutos.
 
-### Paso 3: Subir los datos iniciales
-Con los archivos `cadd_brca1.tsv` y `revel_data/revel_with_transcript_ids` en tu carpeta, ejecuta:
-```powershell
-.venv\Scripts\python setup_database.py
+### 3. Recordatorio de Secretos en Producción
+Si creas un nuevo proyecto en Supabase, recuerda que en **Streamlit Cloud -> Advanced Settings -> Secrets**, las variables deben estar entre comillas dobles (formato TOML estricto), de la siguiente forma:
+```toml
+SUPABASE_URL="https://tu-url.supabase.co"
+SUPABASE_KEY="tu-service-role-key-que-empieza-con-secret"
 ```
-*Este script subirá los scores filtrados de CADD y REVEL a tu base de datos de Supabase. Solo se ejecuta una vez.*
-
-### Paso 4: Limpiar disco (Liberar ~6.7 GB)
-Una vez que `setup_database.py` termine con éxito (100% completado), puedes borrar permanentemente para liberar espacio:
-* El archivo `revel.zip`
-* La carpeta `revel_data/`
-* El archivo `cadd_brca1.tsv`
-
-### Paso 5: Ejecutar la App
-Inicia el servidor local de Streamlit para probar la plataforma como lo haría un laboratorio real:
-```powershell
-.venv\Scripts\python -m streamlit run app.py
-```
-*La app se conectará a Supabase para enriquecer las variantes de cualquier archivo VCF que subas sin requerir archivos locales.*
