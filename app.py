@@ -197,31 +197,6 @@ def verify_password(password, stored_hash):
     salt, hashed = stored_hash.split(":")
     return hash_password(password, salt) == stored_hash
 
-def registrar_usuario(email, password, laboratorio, nombre_completo=""):
-    """Registra un nuevo usuario en la tabla usuarios de Supabase."""
-    if not supabase:
-        return False, "Supabase no está configurado."
-
-    # Verificar si el email ya existe
-    try:
-        existe = supabase.table("usuarios").select("id").eq("email", email).execute()
-        if existe.data:
-            return False, "Ya existe una cuenta con este correo electrónico."
-    except Exception as e:
-        return False, f"Error de conexión: {e}"
-
-    # Crear el usuario
-    try:
-        pw_hash = hash_password(password)
-        supabase.table("usuarios").insert({
-            "email": email,
-            "password_hash": pw_hash,
-            "laboratorio": laboratorio,
-            "nombre_completo": nombre_completo
-        }).execute()
-        return True, "Cuenta creada exitosamente. Ahora puedes iniciar sesión."
-    except Exception as e:
-        return False, f"Error al crear la cuenta: {e}"
 
 def iniciar_sesion(email, password):
     """Autentica un usuario contra la tabla usuarios de Supabase."""
@@ -292,28 +267,8 @@ def mostrar_login():
 
         st.markdown("<div class='login-divider'></div>", unsafe_allow_html=True)
 
-        # Tabs Login / Registro
-        if "auth_mode" not in st.session_state:
-            st.session_state.auth_mode = "login"
-
-        col_l, col_r = st.columns(2)
-        with col_l:
-            if st.button("🔑 Iniciar Sesión", use_container_width=True,
-                          type="primary" if st.session_state.auth_mode == "login" else "secondary"):
-                st.session_state.auth_mode = "login"
-                st.rerun()
-        with col_r:
-            if st.button("📝 Registrarse", use_container_width=True,
-                          type="primary" if st.session_state.auth_mode == "registro" else "secondary"):
-                st.session_state.auth_mode = "registro"
-                st.rerun()
-
         st.markdown("")  # Spacer
-
-        if st.session_state.auth_mode == "login":
-            mostrar_formulario_login()
-        else:
-            mostrar_formulario_registro()
+        mostrar_formulario_login()
 
 
 def mostrar_formulario_login():
@@ -354,61 +309,7 @@ def mostrar_formulario_login():
                     st.error(f"❌ {msg}")
 
 
-def mostrar_formulario_registro():
-    """Formulario de registro de nuevos usuarios."""
-    with st.form("registro_form", clear_on_submit=True):
-        st.markdown("#### 📝 Crear nueva cuenta")
 
-        nombre = st.text_input(
-            "Nombre completo",
-            placeholder="Dr. Juan Pérez",
-            key="reg_nombre"
-        )
-        email = st.text_input(
-            "Correo electrónico",
-            placeholder="usuario@laboratorio.com",
-            key="reg_email"
-        )
-        laboratorio = st.text_input(
-            "Nombre del laboratorio",
-            placeholder="Ej: Lab_Genomica_USIL_001",
-            key="reg_lab"
-        )
-        password = st.text_input(
-            "Contraseña",
-            type="password",
-            placeholder="Mínimo 6 caracteres",
-            key="reg_password"
-        )
-        password_confirm = st.text_input(
-            "Confirmar contraseña",
-            type="password",
-            placeholder="Repite tu contraseña",
-            key="reg_password_confirm"
-        )
-
-        submitted = st.form_submit_button("Crear cuenta", use_container_width=True, type="primary")
-
-        if submitted:
-            # Validaciones
-            if not all([email, laboratorio, password, password_confirm]):
-                st.error("Por favor completa todos los campos obligatorios.")
-            elif len(password) < 6:
-                st.error("La contraseña debe tener al menos 6 caracteres.")
-            elif password != password_confirm:
-                st.error("Las contraseñas no coinciden.")
-            elif "@" not in email:
-                st.error("Por favor ingresa un correo electrónico válido.")
-            else:
-                with st.spinner("Creando cuenta..."):
-                    ok, msg = registrar_usuario(email, password, laboratorio, nombre)
-                if ok:
-                    st.success(f"✅ {msg}")
-                    st.session_state.auth_mode = "login"
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error(f"❌ {msg}")
 
 
 # ── Gate de Autenticación ─────────────────────────────────────────────────────
