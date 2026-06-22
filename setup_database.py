@@ -81,7 +81,10 @@ def insertar_en_lotes(supabase, tabla, registros, nombre_tabla):
     for i in range(0, total, BATCH_SIZE):
         lote = registros[i : i + BATCH_SIZE]
         try:
-            supabase.table(tabla).upsert(lote).execute()
+            if tabla == "revel_brca1":
+                supabase.table(tabla).upsert(lote, on_conflict="chr,grch38_pos,ref,alt").execute()
+            else:
+                supabase.table(tabla).upsert(lote, on_conflict="chr,pos,ref,alt").execute()
             insertados += len(lote)
             progreso = (insertados / total) * 100
             print(f"  [{nombre_tabla}] {insertados}/{total} ({progreso:.1f}%)", end="\r")
@@ -159,6 +162,10 @@ def procesar_revel(supabase):
     ].copy()
 
     print(f"  Filtradas para BRCA1: {len(df_brca1)}")
+    
+    # Remover duplicados (mismo chr, pos, ref, alt) debido a múltiples transcritos
+    df_brca1 = df_brca1.drop_duplicates(subset=["chr", "grch38_pos", "ref", "alt"]).copy()
+    print(f"  Únicas a subir: {len(df_brca1)}")
 
     # Preparar registros con las columnas que necesitamos
     registros = []
@@ -195,8 +202,8 @@ def main():
         print(f"  ❌ Error de conexión: {e}")
         sys.exit(1)
 
-    # 3. Procesar y subir CADD
-    cadd_ok, cadd_err = procesar_cadd(supabase)
+    # 3. Procesar y subir CADD (YA SUBIDO, IGNORANDO)
+    cadd_ok, cadd_err = 0, 0 # procesar_cadd(supabase)
 
     # 4. Procesar y subir REVEL
     revel_ok, revel_err = procesar_revel(supabase)

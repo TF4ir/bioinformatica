@@ -5,7 +5,7 @@ Este archivo sirve como memoria técnica para que cualquier desarrollador o agen
 ---
 
 ## 📌 Datos de la Sesión Actual
-* **ID de Conversación de Referencia (Antigravity):** `0e256ae4-dcba-4288-b360-db897e6226d9`
+* **ID de Conversación de Referencia (Antigravity):** `cf51a12f-8dda-4d10-a76f-9d322d4f30e7`
 * **Última Actualización:** 2026-06-22
 
 ---
@@ -18,6 +18,24 @@ Para solucionar el problema de portabilidad y tamaño de las bases de datos (REV
 
 ---
 
+## 🔐 Sistema de Autenticación (Login)
+Se implementó un sistema de autenticación basado en una tabla `usuarios` en Supabase:
+
+### Componentes:
+1. **Tabla `usuarios`** en Supabase: almacena email, contraseña hasheada (SHA-256 + salt), nombre del laboratorio y nombre completo.
+2. **Pantalla de Login/Registro** integrada en Streamlit con diseño premium (CSS personalizado con glassmorphism, gradientes y animaciones).
+3. **Gate de autenticación**: Si el usuario no está logueado, se muestra la pantalla de login y se detiene la app con `st.stop()`.
+4. **Historial filtrado por usuario**: La tabla `historial_analisis` tiene una columna `user_id` que vincula cada análisis con el usuario que lo realizó. El Tab 3 (Historial) solo muestra los análisis del usuario logueado.
+5. **Auto-fill del laboratorio**: El campo "laboratorio" en Tab 1 se auto-rellena con el laboratorio registrado del usuario y queda deshabilitado.
+
+### Archivos nuevos:
+* `supabase_auth_schema.sql` — SQL para crear la tabla `usuarios`, agregar columna `user_id` al historial, y configurar políticas RLS.
+
+### ⚠️ PASO MANUAL REQUERIDO:
+Antes de usar el login, el usuario debe ejecutar el contenido de `supabase_auth_schema.sql` en el **Editor SQL del Dashboard de Supabase**.
+
+---
+
 ## 🛠️ Estado del Proyecto
 
 ### ✅ Lo que ya está Hecho y Completado:
@@ -26,6 +44,7 @@ Para solucionar el problema de portabilidad y tamaño de las bases de datos (REV
 3. **Población de la Base de Datos:** Se actualizó `setup_database.py` para manejar conflictos de inserción (`on_conflict`) y eliminar transcritos duplicados de REVEL. **Se logró cargar el 100% de las variantes de BRCA1** (243,210 de CADD y 13,703 únicas de REVEL) hacia Supabase usando la clave `service_role`.
 4. **Repositorio en GitHub:** El código fue integrado en la rama `main` del repositorio `TF4ir/bioinformatica`. El archivo `.gitignore` fue configurado para proteger los secretos e ignorar los datos locales pesados.
 5. **Despliegue en Streamlit Cloud:** La aplicación está funcional en la web. Está configurada con los *Secrets* (credenciales de Supabase en formato TOML) para conectarse a la base de datos remotamente.
+6. **Sistema de Login:** Implementado con tabla `usuarios` en Supabase, hash de contraseñas SHA-256 + salt, pantalla de login/registro premium, y filtrado de historial por usuario.
 
 ---
 
@@ -52,3 +71,6 @@ Si creas un nuevo proyecto en Supabase, recuerda que en **Streamlit Cloud -> Adv
 SUPABASE_URL="https://tu-url.supabase.co"
 SUPABASE_KEY="tu-service-role-key-que-empieza-con-secret"
 ```
+
+### 4. Configurar la tabla de usuarios en Supabase
+Ejecutar el contenido de `supabase_auth_schema.sql` en el Editor SQL del Dashboard de Supabase para habilitar el sistema de login.

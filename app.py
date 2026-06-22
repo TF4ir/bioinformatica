@@ -4,6 +4,8 @@ import numpy as np
 import requests
 import time
 import os
+import hashlib
+import secrets
 from dotenv import load_dotenv
 from supabase import create_client
 from sklearn.ensemble import RandomForestClassifier
@@ -27,11 +29,427 @@ st.set_page_config(
     layout="wide"
 )
 
+# ── CSS Premium para Login ───────────────────────────────────────────────────
+def aplicar_estilos_login():
+    st.markdown("""
+    <style>
+    /* ── Reset y base ── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    .login-container {
+        max-width: 440px;
+        margin: 2rem auto;
+        padding: 2.5rem 2rem;
+        background: linear-gradient(145deg, rgba(30, 33, 48, 0.95), rgba(20, 22, 35, 0.98));
+        border-radius: 20px;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4),
+                    0 0 40px rgba(99, 102, 241, 0.08);
+        backdrop-filter: blur(20px);
+    }
+
+    .login-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .login-header .logo-icon {
+        font-size: 3.5rem;
+        display: block;
+        margin-bottom: 0.5rem;
+        animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+        0%, 100% { filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.4)); }
+        50% { filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.8)); }
+    }
+
+    .login-header h2 {
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 1.6rem;
+        background: linear-gradient(135deg, #818cf8, #c084fc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin: 0;
+    }
+
+    .login-header p {
+        font-family: 'Inter', sans-serif;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.85rem;
+        margin-top: 0.3rem;
+    }
+
+    .login-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+        margin: 1.5rem 0;
+    }
+
+    /* ── Tabs de login/registro ── */
+    .auth-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 1.5rem;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 4px;
+    }
+
+    .auth-tab {
+        flex: 1;
+        padding: 0.6rem;
+        text-align: center;
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
+        font-size: 0.85rem;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        color: rgba(255, 255, 255, 0.5);
+        border: none;
+        background: transparent;
+    }
+
+    .auth-tab.active {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    /* ── Status badges ── */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
+
+    .status-badge.connected {
+        background: rgba(34, 197, 94, 0.15);
+        color: #4ade80;
+        border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .status-badge.disconnected {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    /* ── User info en sidebar ── */
+    .user-card {
+        padding: 1rem;
+        background: linear-gradient(145deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+        border-radius: 14px;
+        border: 1px solid rgba(99, 102, 241, 0.15);
+        margin-bottom: 1rem;
+    }
+
+    .user-card .user-email {
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        color: #e2e8f0;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .user-card .user-lab {
+        font-family: 'Inter', sans-serif;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.78rem;
+        margin: 4px 0 0 0;
+    }
+
+    .user-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        margin-bottom: 0.6rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# ── Funciones de Autenticación ────────────────────────────────────────────────
+def hash_password(password, salt=None):
+    """Genera un hash seguro de la contraseña usando SHA-256 + salt."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{hashed}"
+
+def verify_password(password, stored_hash):
+    """Verifica una contraseña contra el hash almacenado."""
+    salt, hashed = stored_hash.split(":")
+    return hash_password(password, salt) == stored_hash
+
+def registrar_usuario(email, password, laboratorio, nombre_completo=""):
+    """Registra un nuevo usuario en la tabla usuarios de Supabase."""
+    if not supabase:
+        return False, "Supabase no está configurado."
+
+    # Verificar si el email ya existe
+    try:
+        existe = supabase.table("usuarios").select("id").eq("email", email).execute()
+        if existe.data:
+            return False, "Ya existe una cuenta con este correo electrónico."
+    except Exception as e:
+        return False, f"Error de conexión: {e}"
+
+    # Crear el usuario
+    try:
+        pw_hash = hash_password(password)
+        supabase.table("usuarios").insert({
+            "email": email,
+            "password_hash": pw_hash,
+            "laboratorio": laboratorio,
+            "nombre_completo": nombre_completo
+        }).execute()
+        return True, "Cuenta creada exitosamente. Ahora puedes iniciar sesión."
+    except Exception as e:
+        return False, f"Error al crear la cuenta: {e}"
+
+def iniciar_sesion(email, password):
+    """Autentica un usuario contra la tabla usuarios de Supabase."""
+    if not supabase:
+        return False, None, "Supabase no está configurado."
+
+    try:
+        resp = supabase.table("usuarios").select("*").eq("email", email).maybe_single().execute()
+        if not resp.data:
+            return False, None, "Correo electrónico o contraseña incorrectos."
+
+        user_data = resp.data
+        if not verify_password(password, user_data["password_hash"]):
+            return False, None, "Correo electrónico o contraseña incorrectos."
+
+        # Actualizar último login
+        try:
+            supabase.table("usuarios").update({
+                "last_login": "now()"
+            }).eq("id", user_data["id"]).execute()
+        except Exception:
+            pass  # No bloquear el login si falla la actualización
+
+        return True, user_data, "Inicio de sesión exitoso."
+    except Exception as e:
+        return False, None, f"Error de conexión: {e}"
+
+def cerrar_sesion():
+    """Cierra la sesión del usuario actual."""
+    for key in ["user", "user_id", "lab_name", "user_email", "user_nombre"]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+# ── Pantalla de Login ─────────────────────────────────────────────────────────
+def mostrar_login():
+    """Renderiza la pantalla de autenticación (login + registro)."""
+    aplicar_estilos_login()
+
+    # Usar columnas para centrar el formulario
+    _, col_centro, _ = st.columns([1, 1.5, 1])
+
+    with col_centro:
+        # Header con logo
+        st.markdown("""
+        <div class="login-header">
+            <span class="logo-icon">🧬</span>
+            <h2>VarAI Detect</h2>
+            <p>Sistema de clasificación de variantes VUS en BRCA1</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Status de conexión
+        if supabase:
+            st.markdown("""
+            <div style="text-align: center;">
+                <span class="status-badge connected">● Base de datos conectada</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="text-align: center;">
+                <span class="status-badge disconnected">● Base de datos desconectada</span>
+            </div>
+            """, unsafe_allow_html=True)
+            st.error("⚠️ Supabase no está configurado. Verifica tu archivo `.env`.")
+            st.stop()
+
+        st.markdown("<div class='login-divider'></div>", unsafe_allow_html=True)
+
+        # Tabs Login / Registro
+        if "auth_mode" not in st.session_state:
+            st.session_state.auth_mode = "login"
+
+        col_l, col_r = st.columns(2)
+        with col_l:
+            if st.button("🔑 Iniciar Sesión", use_container_width=True,
+                          type="primary" if st.session_state.auth_mode == "login" else "secondary"):
+                st.session_state.auth_mode = "login"
+                st.rerun()
+        with col_r:
+            if st.button("📝 Registrarse", use_container_width=True,
+                          type="primary" if st.session_state.auth_mode == "registro" else "secondary"):
+                st.session_state.auth_mode = "registro"
+                st.rerun()
+
+        st.markdown("")  # Spacer
+
+        if st.session_state.auth_mode == "login":
+            mostrar_formulario_login()
+        else:
+            mostrar_formulario_registro()
+
+
+def mostrar_formulario_login():
+    """Formulario de inicio de sesión."""
+    with st.form("login_form", clear_on_submit=False):
+        st.markdown("#### 🔑 Iniciar Sesión")
+
+        email = st.text_input(
+            "Correo electrónico",
+            placeholder="usuario@laboratorio.com",
+            key="login_email"
+        )
+        password = st.text_input(
+            "Contraseña",
+            type="password",
+            placeholder="Tu contraseña",
+            key="login_password"
+        )
+
+        submitted = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+
+        if submitted:
+            if not email or not password:
+                st.error("Por favor completa todos los campos.")
+            else:
+                with st.spinner("Verificando credenciales..."):
+                    ok, user_data, msg = iniciar_sesion(email, password)
+                if ok:
+                    st.session_state.user = user_data
+                    st.session_state.user_id = user_data["id"]
+                    st.session_state.lab_name = user_data["laboratorio"]
+                    st.session_state.user_email = user_data["email"]
+                    st.session_state.user_nombre = user_data.get("nombre_completo", "")
+                    st.success(f"✅ {msg}")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(f"❌ {msg}")
+
+
+def mostrar_formulario_registro():
+    """Formulario de registro de nuevos usuarios."""
+    with st.form("registro_form", clear_on_submit=True):
+        st.markdown("#### 📝 Crear nueva cuenta")
+
+        nombre = st.text_input(
+            "Nombre completo",
+            placeholder="Dr. Juan Pérez",
+            key="reg_nombre"
+        )
+        email = st.text_input(
+            "Correo electrónico",
+            placeholder="usuario@laboratorio.com",
+            key="reg_email"
+        )
+        laboratorio = st.text_input(
+            "Nombre del laboratorio",
+            placeholder="Ej: Lab_Genomica_USIL_001",
+            key="reg_lab"
+        )
+        password = st.text_input(
+            "Contraseña",
+            type="password",
+            placeholder="Mínimo 6 caracteres",
+            key="reg_password"
+        )
+        password_confirm = st.text_input(
+            "Confirmar contraseña",
+            type="password",
+            placeholder="Repite tu contraseña",
+            key="reg_password_confirm"
+        )
+
+        submitted = st.form_submit_button("Crear cuenta", use_container_width=True, type="primary")
+
+        if submitted:
+            # Validaciones
+            if not all([email, laboratorio, password, password_confirm]):
+                st.error("Por favor completa todos los campos obligatorios.")
+            elif len(password) < 6:
+                st.error("La contraseña debe tener al menos 6 caracteres.")
+            elif password != password_confirm:
+                st.error("Las contraseñas no coinciden.")
+            elif "@" not in email:
+                st.error("Por favor ingresa un correo electrónico válido.")
+            else:
+                with st.spinner("Creando cuenta..."):
+                    ok, msg = registrar_usuario(email, password, laboratorio, nombre)
+                if ok:
+                    st.success(f"✅ {msg}")
+                    st.session_state.auth_mode = "login"
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ {msg}")
+
+
+# ── Gate de Autenticación ─────────────────────────────────────────────────────
+def usuario_autenticado():
+    """Retorna True si hay un usuario logueado en session_state."""
+    return "user" in st.session_state and st.session_state.user is not None
+
+
+# ── GATE: Si no está autenticado, mostrar login y detener ────────────────────
+if not usuario_autenticado():
+    mostrar_login()
+    st.stop()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  A PARTIR DE AQUÍ, SOLO SE EJECUTA SI EL USUARIO ESTÁ AUTENTICADO
+# ══════════════════════════════════════════════════════════════════════════════
+
 st.title("🧬 VarAI Detect")
 st.markdown("**Sistema de clasificación y priorización de variantes VUS en BRCA1**")
 
-# Indicador de estado de conexión en la barra lateral
+# Indicador de estado de conexión y usuario en la barra lateral
 with st.sidebar:
+    # Info del usuario logueado
+    user_nombre = st.session_state.get("user_nombre", "")
+    user_email = st.session_state.get("user_email", "")
+    user_lab = st.session_state.get("lab_name", "")
+
+    st.markdown(f"""
+    <div class="user-card">
+        <div class="user-avatar">👤</div>
+        <p class="user-email">{user_nombre or user_email}</p>
+        <p class="user-lab">🏥 {user_lab}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("🚪 Cerrar sesión", use_container_width=True):
+        cerrar_sesion()
+        st.rerun()
+
+    st.markdown("---")
     st.markdown("### ⚙️ Estado del sistema")
     if supabase:
         st.success("🟢 Supabase conectado")
@@ -258,19 +676,23 @@ def parsear_vcf(archivo):
         })
     return pd.DataFrame(filas)
 
-def guardar_en_supabase(laboratorio, df_resultado):
+def guardar_en_supabase(laboratorio, df_resultado, user_id=None):
     if not supabase:
         st.warning("⚠️ No se guardó en la base de datos (Supabase no está configurado).")
         return False
     try:
-        supabase.table("historial_analisis").insert({
+        registro = {
             "laboratorio": laboratorio,
             "total_variantes": int(len(df_resultado)),
             "alta":  int((df_resultado["prioridad"] == "🔴 Alta").sum()),
             "media": int((df_resultado["prioridad"] == "🟡 Media").sum()),
             "baja":  int((df_resultado["prioridad"] == "🟢 Baja").sum()),
             "resultados": df_resultado.to_dict(orient="records")
-        }).execute()
+        }
+        # Vincular el análisis con el usuario autenticado
+        if user_id:
+            registro["user_id"] = user_id
+        supabase.table("historial_analisis").insert(registro).execute()
         return True
     except Exception as e:
         st.error(f"Error al guardar en Supabase: {e}")
@@ -287,8 +709,14 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("Subir archivo VCF con variantes del paciente")
 
-    laboratorio = st.text_input("Nombre del laboratorio o código de muestra", 
-                                 placeholder="Ej: Lab_Genomica_USIL_001")
+    # El laboratorio se auto-rellena con el lab del usuario logueado
+    laboratorio = st.text_input(
+        "Nombre del laboratorio o código de muestra",
+        value=st.session_state.get("lab_name", ""),
+        placeholder="Ej: Lab_Genomica_USIL_001",
+        disabled=True,
+        help="Este campo se rellena automáticamente con tu laboratorio registrado."
+    )
 
     archivo = st.file_uploader("Selecciona tu archivo VCF", type=["vcf", "txt"])
 
@@ -343,7 +771,7 @@ with tab1:
                     )
 
                     df_resultado = df_procesable[
-                        ["chr", "pos", "ref", "alt", "cadd_phred", 
+                        ["chr", "pos", "ref", "alt", "cadd_phred",
                          "REVEL", "af", "prob_patogenica", "prioridad"]
                     ].sort_values("prob_patogenica", ascending=False).reset_index(drop=True)
 
@@ -356,8 +784,9 @@ with tab1:
                     st.markdown("### Tabla de resultados")
                     st.dataframe(df_resultado, use_container_width=True)
 
-                    # Guardamos en Supabase
-                    if guardar_en_supabase(laboratorio, df_resultado):
+                    # Guardamos en Supabase con el user_id del usuario autenticado
+                    user_id = st.session_state.get("user_id", None)
+                    if guardar_en_supabase(laboratorio, df_resultado, user_id=user_id):
                         st.success("✅ Resultados guardados en Supabase correctamente")
 
                     csv = df_resultado.to_csv(index=False)
@@ -407,9 +836,10 @@ with tab2:
     else:
         st.warning("No hay resultados guardados. Sube un archivo VCF en la pestaña anterior.")
 
-# ── TAB 3: Historial Supabase ─────────────────────────────────────────────────
+# ── TAB 3: Historial Supabase (FILTRADO POR USUARIO) ─────────────────────────
 with tab3:
-    st.subheader("Historial de análisis guardados en Supabase")
+    st.subheader("📈 Historial de análisis")
+    st.caption(f"Mostrando análisis del laboratorio: **{st.session_state.get('lab_name', 'N/A')}**")
 
     if st.button("🔄 Cargar historial"):
         if not supabase:
@@ -419,19 +849,60 @@ with tab3:
             )
         else:
             try:
-                respuesta = supabase.table("historial_analisis").select("*").order(
-                    "fecha", desc=True
-                ).execute()
+                user_id = st.session_state.get("user_id", None)
+
+                # Filtrar historial por el user_id del usuario logueado
+                query = supabase.table("historial_analisis").select("*")
+                if user_id:
+                    query = query.eq("user_id", user_id)
+                respuesta = query.order("fecha", desc=True).execute()
+
                 df_historial = pd.DataFrame(respuesta.data)
 
                 if len(df_historial) == 0:
-                    st.info("No hay análisis guardados aún.")
+                    st.info("No tienes análisis guardados aún. Sube un archivo VCF para empezar.")
                 else:
-                    st.write(f"**Total de análisis guardados:** {len(df_historial)}")
+                    st.write(f"**Total de análisis realizados:** {len(df_historial)}")
+
+                    # Mostrar métricas resumen
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("📊 Total análisis", len(df_historial))
+                    col2.metric("🔴 Total Alta", df_historial["alta"].sum())
+                    col3.metric("🟡 Total Media", df_historial["media"].sum())
+                    col4.metric("🟢 Total Baja", df_historial["baja"].sum())
+
+                    st.markdown("---")
+
+                    # Tabla de historial (sin columna de resultados JSON)
+                    columnas_mostrar = ["fecha", "laboratorio", "total_variantes",
+                                        "alta", "media", "baja"]
+                    columnas_disponibles = [c for c in columnas_mostrar if c in df_historial.columns]
                     st.dataframe(
-                        df_historial[["fecha", "laboratorio", "total_variantes", 
-                                      "alta", "media", "baja"]],
+                        df_historial[columnas_disponibles],
                         use_container_width=True
                     )
+
+                    # Opción de expandir detalles de cada análisis
+                    st.markdown("### 🔍 Detalle por análisis")
+                    for idx, row in df_historial.iterrows():
+                        fecha = row.get("fecha", "Sin fecha")
+                        lab = row.get("laboratorio", "N/A")
+                        total = row.get("total_variantes", 0)
+                        with st.expander(f"📅 {fecha} — {lab} ({total} variantes)"):
+                            if "resultados" in row and row["resultados"]:
+                                df_detalle = pd.DataFrame(row["resultados"])
+                                st.dataframe(df_detalle, use_container_width=True)
+
+                                csv_detalle = df_detalle.to_csv(index=False)
+                                st.download_button(
+                                    label="⬇️ Descargar este análisis",
+                                    data=csv_detalle,
+                                    file_name=f"analisis_{lab}_{fecha}.csv",
+                                    mime="text/csv",
+                                    key=f"download_{idx}"
+                                )
+                            else:
+                                st.info("Sin datos detallados para este análisis.")
+
             except Exception as e:
                 st.error(f"Error al conectar con Supabase: {e}")
