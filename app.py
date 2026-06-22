@@ -622,81 +622,101 @@ with tab1:
     archivo = st.file_uploader("Selecciona tu archivo VCF", type=["vcf", "txt"])
 
     if archivo is not None and laboratorio:
-        st.info("Procesando variantes...")
+        file_id = f"{archivo.name}_{archivo.size}"
+        if st.session_state.get("current_file_id") != file_id:
+            st.session_state.current_file_id = file_id
+            st.session_state.procesamiento_completado = False
+            st.session_state.df_resultado = None
 
-        df_vcf = parsear_vcf(archivo)
-        st.write(f"**Variantes detectadas:** {len(df_vcf)}")
+        if not st.session_state.procesamiento_completado:
+            if st.button("▶️ Procesar Variantes", type="primary"):
+                st.info("Procesando variantes...")
 
-        df_vcf = df_vcf[
-            (df_vcf["ref"].str.len() == 1) &
-            (df_vcf["alt"].str.len() == 1)
-        ].reset_index(drop=True)
-        st.write(f"**Variantes missense procesables:** {len(df_vcf)}")
+                df_vcf = parsear_vcf(archivo)
+                st.write(f"**Variantes detectadas:** {len(df_vcf)}")
 
-        if len(df_vcf) == 0:
-            st.error("No se encontraron variantes missense en el archivo.")
-        else:
-            with st.spinner("Obteniendo scores CADD y REVEL..."):
-                df_con_todo = enriquecer_variantes(df_vcf)
+                df_vcf = df_vcf[
+                    (df_vcf["ref"].str.len() == 1) &
+                    (df_vcf["alt"].str.len() == 1)
+                ].reset_index(drop=True)
+                st.write(f"**Variantes missense procesables:** {len(df_vcf)}")
 
-            if df_con_todo is not None:
-                df_procesable = df_con_todo[
-                    df_con_todo["cadd_phred"].notna() &
-                    df_con_todo["REVEL"].notna()
-                ].copy().reset_index(drop=True)
-
-                if len(df_procesable) == 0:
-                    st.warning("Ninguna variante tiene scores CADD y REVEL disponibles.")
+                if len(df_vcf) == 0:
+                    st.error("No se encontraron variantes missense en el archivo.")
                 else:
-                    st.write(f"**Variantes con CADD y REVEL:** {len(df_procesable)}")
+                    with st.spinner("Obteniendo scores CADD y REVEL..."):
+                        df_con_todo = enriquecer_variantes(df_vcf)
 
-                    progress = st.progress(0)
-                    status   = st.empty()
-                    afs = []
-                    for i, fila in df_procesable.iterrows():
-                        af = consultar_gnomad(
-                            fila["chr"], fila["pos"], fila["ref"], fila["alt"]
-                        )
-                        afs.append(af)
-                        progress.progress((i + 1) / len(df_procesable))
-                        status.text(f"Consultando gnomAD: {i+1}/{len(df_procesable)}")
-                        time.sleep(0.3)
+                    if df_con_todo is not None:
+                        df_procesable = df_con_todo[
+                            df_con_todo["cadd_phred"].notna() &
+                            df_con_todo["REVEL"].notna()
+                        ].copy().reset_index(drop=True)
 
-                    df_procesable["af"] = afs
-                    status.text("✅ Consulta gnomAD completada")
+                        if len(df_procesable) == 0:
+                            st.warning("Ninguna variante tiene scores CADD y REVEL disponibles.")
+                        else:
+                            st.write(f"**Variantes con CADD y REVEL:** {len(df_procesable)}")
 
-                    probs = modelo.predict_proba(df_procesable[FEATURES].values)[:, 1]
-                    df_procesable["prob_patogenica"] = probs
-                    df_procesable["prioridad"] = df_procesable["prob_patogenica"].apply(
-                        asignar_prioridad
-                    )
+                            progress = st.progress(0)
+                            status   = st.empty()
+                            afs = []
+                            for i, fila in df_procesable.iterrows():
+                                af = consultar_gnomad(
+                                    fila["chr"], fila["pos"], fila["ref"], fila["alt"]
+                                )
+                                afs.append(af)
+                                progress.progress((i + 1) / len(df_procesable))
+                                status.text(f"Consultando gnomAD: {i+1}/{len(df_procesable)}")
+                                time.sleep(0.3)
 
-                    df_resultado = df_procesable[
-                        ["chr", "pos", "ref", "alt", "cadd_phred",
-                         "REVEL", "af", "prob_patogenica", "prioridad"]
-                    ].sort_values("prob_patogenica", ascending=False).reset_index(drop=True)
+                            df_procesable["af"] = afs
+                            status.text("✅ Consulta gnomAD completada")
 
-                    st.markdown("---")
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("🔴 Alta",  (df_resultado["prioridad"] == "🔴 Alta").sum())
-                    col2.metric("🟡 Media", (df_resultado["prioridad"] == "🟡 Media").sum())
-                    col3.metric("🟢 Baja",  (df_resultado["prioridad"] == "🟢 Baja").sum())
+                            probs = modelo.predict_proba(df_procesable[FEATURES].values)[:, 1]
+                            df_procesable["prob_patogenica"] = probs
+                            df_procesable["prioridad"] = df_procesable["prob_patogenica"].apply(
+                                asignar_prioridad
+                            )
 
-                    st.markdown("### Tabla de resultados")
-                    st.dataframe(df_resultado, use_container_width=True)
+                            df_resultado = df_procesable[
+                                ["chr", "pos", "ref", "alt", "cadd_phred",
+                                 "REVEL", "af", "prob_patogenica", "prioridad"]
+                            ].sort_values("prob_patogenica", ascending=False).reset_index(drop=True)
 
-                    # Guardamos en Supabase con el user_id del usuario autenticado
-                    user_id = st.session_state.get("user_id", None)
-                    if guardar_en_supabase(laboratorio, df_resultado, user_id=user_id):
-                        st.success("✅ Resultados guardados en Supabase correctamente")
+                            # Guardamos en Supabase con el user_id del usuario autenticado
+                            user_id = st.session_state.get("user_id", None)
+                            if guardar_en_supabase(laboratorio, df_resultado, user_id=user_id):
+                                st.success("✅ Resultados guardados en Supabase correctamente")
 
-                    csv = df_resultado.to_csv(index=False)
-                    st.download_button(
-                        label="⬇️ Descargar resultados CSV",
-                        data=csv,
-                        file_name="vus_priorizadas_varai.csv",
-                        mime="text/csv"
-                    )
+                            # Guardar archivo localmente para Tab 2
+                            df_resultado.to_csv("vus_priorizadas_varai.csv", index=False)
+
+                            st.session_state.df_resultado = df_resultado
+                            st.session_state.procesamiento_completado = True
+                            time.sleep(1)
+                            st.rerun()
+
+        else:
+            df_resultado = st.session_state.df_resultado
+            
+            st.success("✅ Procesamiento completado")
+            st.markdown("---")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("🔴 Alta",  (df_resultado["prioridad"] == "🔴 Alta").sum())
+            col2.metric("🟡 Media", (df_resultado["prioridad"] == "🟡 Media").sum())
+            col3.metric("🟢 Baja",  (df_resultado["prioridad"] == "🟢 Baja").sum())
+
+            st.markdown("### Tabla de resultados")
+            st.dataframe(df_resultado, use_container_width=True)
+
+            csv = df_resultado.to_csv(index=False)
+            st.download_button(
+                label="⬇️ Descargar resultados CSV",
+                data=csv,
+                file_name="vus_priorizadas_varai.csv",
+                mime="text/csv"
+            )
 
     elif archivo is not None and not laboratorio:
         st.warning("Por favor ingresa el nombre del laboratorio antes de procesar.")
